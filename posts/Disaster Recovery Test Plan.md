@@ -1,0 +1,56 @@
+---
+tags:
+  - dev
+  - coupang
+  - incident
+  - test
+---
+## Execution Plan
+---
+- Low Risk -> High Risk
+- Less Critical -> Critical
+- Non business hour -> Peak Time
+- Small Impact Scope -> Large Impact Scope
+- Simple recovery process -> Complex recovery process
+## Before Execution
+---
+- Clear documentation of the fault to test and expected behavior
+- Define potential failures 
+- Define Key metrics to monitor
+- Define Risk level
+- Check worst case scenario and contingency plan
+- Define test steps
+- Check Actions to take
+- Check Impact to functionalities and data
+## Test Scenario
+---
+- Responses
+	- Error: make api calls get error response like 500
+	- Delay: increase latency of api calls
+	- Timeout: make api calls get timeout
+- Services
+	- Redis
+		- Performance increase
+		- Master/Slave failover
+		- Slave crash
+		- Master crash
+		- Redis scale out or scale in
+	- Kafa
+		- Kafka isn't avaialbe
+	- DB
+		- DB performance (writing ,reading)
+		- DB failover
+		- DB reader node crash
+		- DB writer node crash
+		- DB lock / not able to commit
+- Data Integrity
+	- Null value
+	- Empty value
+	- Missed fileds
+- Service Self
+	- One pod crash
+	- Sidecar mis-behave
+	- One stack deleted
+	- Not able to write disk
+	- High CPU usage
+	- High load 

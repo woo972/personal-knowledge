@@ -1,0 +1,135 @@
+---
+tags:
+  - aws
+  - sqs
+  - message_queue
+dg-publish: true
+---
+## 개요 및 개념
+---
+시스템 간 메시지를 주고받을 수 있게 하는 Message Queue 서비스로 Simple Queue Service의 약자이다. 컨슈머는 poll방식으로 메시지를 수신한다.
+아래 3가지 개념으로 구성된다.
+- Publisher: 메시지를 발행하는 주체. 아래와 같은 행위를 할 수 있다.
+	- 메시지 발행하기
+- Queue: 메시지를 전달하는 파이프라인.
+- Consumer: 메시지를 소비하는 주체. 아래와 같은 행위를 할 수 있다.
+	- 메시지 가져오기
+	- 메시지 삭제하기(메시지 ACK시 Queue에서 삭제)
+	- 메시지 가져오기 취소(메시지 NACK시 Queue에서 삭제 X)
+## 설정
+---
+### SQS 테스트
+- AWS console > SQS > 대기열 생성
+- IAM 권한 부여
+- awscli 테스트
+	- awscli 설치
+	- AWS 로그인
+		- 명령어: `aws configure` 
+		- 필요사항: ACCESS_KEY_ID, SECRET_ACCESS_KEY
+	- 대기열 확인 테스트
+	  `aws sqs list-queues`
+	- 메시지 전송 테스트
+	  `aws sqs send-message --queue-url <QUEUE_URL> --message-body "my msg"`
+	- 메시지 수신 테스트
+	  `aws sqs receive-message --queue-url <QUEUE_URL>`
+
+### Spring boot 통합
+#### 의존성 추가
+```kotlin
+implementation(platform("io.awspring.cloud:spring-cloud-aws-dependencies:3.1.0"))  
+implementation("io.awspring.cloud:spring-cloud-aws-starter-sqs")
+```
+#### 설정
+##### application.yml
+```yml
+spring:  
+  cloud:  
+    aws:  
+      region:  
+        static: <region>
+      credentials:  
+        access-key: <access-key>
+        secret-key: <secret-key>
+  
+application:  
+  amazon:  
+    sqs:   
+      queue-name: <queue_name>
+```
+##### Configuration
+```kotlin
+@Configuration  
+class AwsSqsConfig {  
+    @Value("\${spring.cloud.aws.region.static}")  
+    private lateinit var region: String  
+  
+    @Value("\${spring.cloud.aws.credentials.access-key}")  
+    private lateinit var accessKey: String  
+  
+    @Value("\${spring.cloud.aws.credentials.secret-key}")  
+    private lateinit var secretKey: String  
+  
+    @Bean  
+    fun sqsAsyncClient(): SqsAsyncClient {  
+        return SqsAsyncClient.builder()  
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))  
+            .region(Region.of(region))  
+            .build()  
+    }  
+  
+    // Listener Factory 설정 (Listener쪽에서만 설정하면 됨)  
+    @Bean  
+    fun defaultSqsListenerContainerFactory(): SqsMessageListenerContainerFactory<Any> {  
+        return SqsMessageListenerContainerFactory  
+            .builder<Any>()  
+            .sqsAsyncClient(sqsAsyncClient())  
+            .build()  
+    }  
+  
+    // 메세지 발송을 위한 SQS 템플릿 설정 (Publisher쪽에서만 설정하면 됨)  
+    @Bean  
+    fun sqsTemplate(): SqsTemplate {  
+        return SqsTemplate.builder().sqsAsyncClient(sqsAsyncClient()).build()  
+    }  
+}
+```
+#### 코드 내 사용
+##### Consumer
+```kotlin
+@Component  
+class AwsSqsListener {  
+	// default ack mode = ON_SUCCESS
+    @SqsListener("\${application.amazon.sqs.queue-name}") 
+    fun messageListener(message: String) {  
+        println("Listener: $message")  
+    }  
+}
+```
+##### Publisher
+```kotlin
+@Component  
+class AwsSqsPublisher(  
+    private val sqsAsyncClient: SqsAsyncClient  
+) {  
+    private val template = SqsTemplate.newTemplate(sqsAsyncClient)  
+  
+    @Value("\${application.amazon.sqs.queue-name}")  
+    private lateinit var defaultQueueName: String  
+  
+    fun sendMessage(groupId: String, message: String): SendResult<String> {  
+        return template.send {to ->  
+            to  
+                .queue(defaultQueueName)  
+                .messageGroupId(groupId) // FIFO 대기열에서 같은 그룹아이디를 가진 그룹 내에서 메시지 순서를 보장하게 해준다
+                .messageDeduplicationId(groupId) // 메시지 중복 필터링이 설정된 대기열에서 중복된 메시지를 필터링한다
+                .payload(message)  
+        }  
+    }  
+}
+```
+## 참조
+---
+- [SQS의 개념](https://channel.io/ko/blog/tech-backend-aws-sqs-introduction)
+- https://docs.awspring.io/spring-cloud-aws/docs/3.1.0/reference/html/index.html#sqs-integration
+- https://howtodoinjava.com/spring-cloud/aws-sqs-with-spring-cloud-aws/
+- [ack 전략](https://www.baeldung.com/java-spring-cloud-aws-v3-message-acknowledgement)
